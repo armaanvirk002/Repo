@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://your-domain.com/sitemap.xml
+
+# Crawl-delay (optional, helps prevent overloading)
+Crawl-delay: 1
+
+# Disallow paths that don't need indexing
+Disallow: /downloads/
+Disallow: /serve/
+Disallow: /bot-download
