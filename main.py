@@ -59,6 +59,18 @@ def get_video_info(url):
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'referer': 'https://www.tiktok.com/',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
+            'extractor_args': {
+                'tiktok': {
+                    'webpage_url_basename': 'video'
+                }
+            }
         }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -68,8 +80,8 @@ def get_video_info(url):
                 return None
                 
             return {
-                'title': info.get('title', 'Unknown Title'),
-                'uploader': info.get('uploader', 'Unknown Author'),
+                'title': info.get('title', 'TikTok Video'),
+                'uploader': info.get('uploader', 'TikTok User'),
                 'duration': info.get('duration', 0),
                 'thumbnail': info.get('thumbnail', ''),
                 'description': info.get('description', ''),
@@ -85,17 +97,34 @@ def download_video(url, format_type='mp4'):
     try:
         timestamp = str(int(time.time()))
         
+        base_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'referer': 'https://www.tiktok.com/',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Sec-Fetch-Mode': 'navigate',
+            },
+            'extractor_args': {
+                'tiktok': {
+                    'webpage_url_basename': 'video'
+                }
+            }
+        }
+        
         if format_type == 'mp4':
             filename = f"tiktok_video_{timestamp}.%(ext)s"
             ydl_opts = {
+                **base_opts,
                 'format': 'best[ext=mp4]/mp4/best',
                 'outtmpl': os.path.join(DOWNLOADS_DIR, filename),
-                'quiet': True,
-                'no_warnings': True,
             }
         else:  # mp3
             filename = f"tiktok_audio_{timestamp}.%(ext)s"
             ydl_opts = {
+                **base_opts,
                 'format': 'bestaudio/best',
                 'outtmpl': os.path.join(DOWNLOADS_DIR, filename),
                 'postprocessors': [{
@@ -103,8 +132,6 @@ def download_video(url, format_type='mp4'):
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-                'quiet': True,
-                'no_warnings': True,
             }
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
