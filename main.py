@@ -53,101 +53,166 @@ def schedule_file_deletion(filepath, delay_minutes=10):
     logging.info(f"Scheduled deletion of {filepath} in {delay_minutes} minutes")
 
 def get_video_info(url):
-    """Extract video information using yt-dlp"""
-    try:
-        ydl_opts = {
+    """Extract video information using yt-dlp with multiple fallback strategies"""
+    
+    # Multiple configuration strategies to try
+    strategies = [
+        # Strategy 1: Full headers with cookies
+        {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'referer': 'https://www.tiktok.com/',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+            },
+            'cookiefile': None,
+            'extractor_args': {
+                'tiktok': {
+                    'api_hostname': 'api.tiktokv.com'
+                }
+            }
+        },
+        # Strategy 2: Desktop Chrome with minimal headers
+        {
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'referer': 'https://www.tiktok.com/',
             'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
+            }
+        },
+        # Strategy 3: Basic configuration
+        {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+    ]
+    
+    for i, ydl_opts in enumerate(strategies):
+        try:
+            logging.info(f"Trying extraction strategy {i+1}")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                
+                if info is None:
+                    continue
+                    
+                logging.info(f"Strategy {i+1} successful")
+                return {
+                    'title': info.get('title', 'TikTok Video'),
+                    'uploader': info.get('uploader', 'TikTok User'),
+                    'duration': info.get('duration', 0),
+                    'thumbnail': info.get('thumbnail', ''),
+                    'description': info.get('description', ''),
+                    'view_count': info.get('view_count', 0),
+                    'like_count': info.get('like_count', 0)
+                }
+        except Exception as e:
+            logging.warning(f"Strategy {i+1} failed: {e}")
+            continue
+    
+    logging.error("All extraction strategies failed")
+    return None
+
+def download_video(url, format_type='mp4'):
+    """Download video using yt-dlp with multiple fallback strategies"""
+    
+    timestamp = str(int(time.time()))
+    
+    # Define base strategies for download
+    base_strategies = [
+        # Strategy 1: iPhone user agent
+        {
+            'quiet': True,
+            'no_warnings': True,
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+            'referer': 'https://www.tiktok.com/',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'DNT': '1',
                 'Sec-Fetch-Mode': 'navigate',
             },
             'extractor_args': {
                 'tiktok': {
-                    'webpage_url_basename': 'video'
+                    'api_hostname': 'api.tiktokv.com'
                 }
             }
-        }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            
-            if info is None:
-                return None
-                
-            return {
-                'title': info.get('title', 'TikTok Video'),
-                'uploader': info.get('uploader', 'TikTok User'),
-                'duration': info.get('duration', 0),
-                'thumbnail': info.get('thumbnail', ''),
-                'description': info.get('description', ''),
-                'view_count': info.get('view_count', 0),
-                'like_count': info.get('like_count', 0)
-            }
-    except Exception as e:
-        logging.error(f"Error extracting video info: {e}")
-        return None
-
-def download_video(url, format_type='mp4'):
-    """Download video using yt-dlp"""
-    try:
-        timestamp = str(int(time.time()))
-        
-        base_opts = {
+        },
+        # Strategy 2: Desktop Chrome
+        {
             'quiet': True,
             'no_warnings': True,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'referer': 'https://www.tiktok.com/',
             'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'en-us,en;q=0.5',
-                'Sec-Fetch-Mode': 'navigate',
-            },
-            'extractor_args': {
-                'tiktok': {
-                    'webpage_url_basename': 'video'
-                }
+                'Accept': '*/*',
+                'Accept-Language': 'en-US,en;q=0.9',
             }
+        },
+        # Strategy 3: Basic configuration
+        {
+            'quiet': True,
+            'no_warnings': True,
         }
-        
-        if format_type == 'mp4':
-            filename = f"tiktok_video_{timestamp}.%(ext)s"
-            ydl_opts = {
-                **base_opts,
-                'format': 'best[ext=mp4]/mp4/best',
-                'outtmpl': os.path.join(DOWNLOADS_DIR, filename),
-            }
-        else:  # mp3
-            filename = f"tiktok_audio_{timestamp}.%(ext)s"
-            ydl_opts = {
-                **base_opts,
-                'format': 'bestaudio/best',
-                'outtmpl': os.path.join(DOWNLOADS_DIR, filename),
-                'postprocessors': [{
-                    'key': 'FFmpegExtractAudio',
-                    'preferredcodec': 'mp3',
-                    'preferredquality': '192',
-                }],
-            }
-        
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+    ]
+    
+    for i, base_opts in enumerate(base_strategies):
+        try:
+            logging.info(f"Trying download strategy {i+1} for {format_type}")
             
-            # Find the downloaded file
-            for file in os.listdir(DOWNLOADS_DIR):
-                if timestamp in file:
-                    filepath = os.path.join(DOWNLOADS_DIR, file)
-                    schedule_file_deletion(filepath)
-                    return filepath
-                    
-        return None
-    except Exception as e:
-        logging.error(f"Error downloading {format_type}: {e}")
-        return None
+            if format_type == 'mp4':
+                filename = f"tiktok_video_{timestamp}.%(ext)s"
+                ydl_opts = {
+                    **base_opts,
+                    'format': 'best[ext=mp4]/mp4/best',
+                    'outtmpl': os.path.join(DOWNLOADS_DIR, filename),
+                }
+            else:  # mp3
+                filename = f"tiktok_audio_{timestamp}.%(ext)s"
+                ydl_opts = {
+                    **base_opts,
+                    'format': 'bestaudio/best',
+                    'outtmpl': os.path.join(DOWNLOADS_DIR, filename),
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+                
+                # Find the downloaded file
+                for file in os.listdir(DOWNLOADS_DIR):
+                    if timestamp in file:
+                        filepath = os.path.join(DOWNLOADS_DIR, file)
+                        schedule_file_deletion(filepath)
+                        logging.info(f"Download strategy {i+1} successful")
+                        return filepath
+                        
+        except Exception as e:
+            logging.warning(f"Download strategy {i+1} failed: {e}")
+            continue
+    
+    logging.error(f"All download strategies failed for {format_type}")
+    return None
 
 @app.route('/')
 def index():
@@ -168,7 +233,9 @@ def process_url():
     # Get video information
     video_info = get_video_info(url)
     if not video_info:
-        flash('Failed to extract video information. Please check the URL and try again.', 'error')
+        # More detailed error message based on potential issues
+        error_msg = 'Unable to process this TikTok video. This may be due to geographic restrictions, private video, or temporary service issues. Please try another video or wait a few moments.'
+        flash(error_msg, 'error')
         return redirect(url_for('index'))
     
     return render_template('index.html', video_info=video_info, tiktok_url=url)
