@@ -4,6 +4,7 @@ import threading
 import time
 import re
 import json
+import signal
 from urllib.parse import urlparse
 from flask import Flask, render_template, request, jsonify, send_file, redirect, url_for, flash
 import yt_dlp
@@ -52,76 +53,116 @@ def schedule_file_deletion(filepath, delay_minutes=10):
     timer.start()
     logging.info(f"Scheduled deletion of {filepath} in {delay_minutes} minutes")
 
-def get_video_info(url):
-    """Extract video information using yt-dlp with multiple fallback strategies"""
+def extract_tiktok_id(url):
+    """Extract TikTok video ID from URL"""
+    import re
+    patterns = [
+        r'tiktok\.com/.*/video/(\d+)',
+        r'vm\.tiktok\.com/([A-Za-z0-9]+)',
+        r'tiktok\.com/t/([A-Za-z0-9]+)',
+        r'/(\d{15,})',
+    ]
     
-    # Multiple configuration strategies to try
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    return None
+
+def get_video_info(url):
+    """Extract video information using yt-dlp with advanced cloud-optimized strategies"""
+    
+    # Extract video ID for better processing
+    video_id = extract_tiktok_id(url)
+    logging.info(f"Processing TikTok video ID: {video_id}")
+    
+    # Advanced configuration strategies optimized for cloud environments
     strategies = [
-        # Strategy 1: Full headers with cookies
+        # Strategy 1: Mobile app simulation
         {
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-            'referer': 'https://www.tiktok.com/',
+            'user_agent': 'com.zhiliaoapp.musically/2023.4.1 (Linux; U; Android 10; en_US; SM-G973F; Build/QP1A.190711.020; Cronet/58.0.2991.0)',
             'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'x-tt-token': '',
+                'x-ss-req-ticket': str(int(time.time() * 1000)),
             },
-            'cookiefile': None,
             'extractor_args': {
                 'tiktok': {
-                    'api_hostname': 'api.tiktokv.com'
+                    'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
+                    'app_version': '23.4.1',
+                    'manifest_app_version': '2023401'
                 }
             }
         },
-        # Strategy 2: Desktop Chrome with minimal headers
+        # Strategy 2: Alternative mobile browser
+        {
+            'quiet': True, 
+            'no_warnings': True,
+            'extract_flat': False,
+            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'referer': 'https://www.tiktok.com/',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+            },
+            'socket_timeout': 30,
+            'retries': 3,
+        },
+        # Strategy 3: Desktop with bypass headers
         {
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'referer': 'https://www.tiktok.com/',
             'headers': {
                 'Accept': '*/*',
                 'Accept-Language': 'en-US,en;q=0.9',
-            }
+                'Origin': 'https://www.tiktok.com',
+                'Referer': 'https://www.tiktok.com/',
+            },
+            'socket_timeout': 60,
         },
-        # Strategy 3: Basic configuration
+        # Strategy 4: Minimal configuration for maximum compatibility
         {
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
+            'no_check_certificate': True,
+            'socket_timeout': 120,
         }
     ]
     
     for i, ydl_opts in enumerate(strategies):
         try:
             logging.info(f"Trying extraction strategy {i+1}")
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                
-                if info is None:
+                try:
+                    info = ydl.extract_info(url, download=False)
+                    
+                    if info is None:
+                        continue
+                        
+                    logging.info(f"Strategy {i+1} successful")
+                    return {
+                        'title': info.get('title', 'TikTok Video'),
+                        'uploader': info.get('uploader', 'TikTok User'),
+                        'duration': info.get('duration', 0),
+                        'thumbnail': info.get('thumbnail', ''),
+                        'description': info.get('description', ''),
+                        'view_count': info.get('view_count', 0),
+                        'like_count': info.get('like_count', 0)
+                    }
+                except Exception as inner_e:
+                    logging.warning(f"Strategy {i+1} inner exception: {inner_e}")
                     continue
                     
-                logging.info(f"Strategy {i+1} successful")
-                return {
-                    'title': info.get('title', 'TikTok Video'),
-                    'uploader': info.get('uploader', 'TikTok User'),
-                    'duration': info.get('duration', 0),
-                    'thumbnail': info.get('thumbnail', ''),
-                    'description': info.get('description', ''),
-                    'view_count': info.get('view_count', 0),
-                    'like_count': info.get('like_count', 0)
-                }
         except Exception as e:
             logging.warning(f"Strategy {i+1} failed: {e}")
             continue
@@ -130,45 +171,65 @@ def get_video_info(url):
     return None
 
 def download_video(url, format_type='mp4'):
-    """Download video using yt-dlp with multiple fallback strategies"""
+    """Download video using yt-dlp with advanced cloud-optimized strategies"""
     
     timestamp = str(int(time.time()))
     
-    # Define base strategies for download
+    # Advanced download strategies matching the extraction strategies
     base_strategies = [
-        # Strategy 1: iPhone user agent
+        # Strategy 1: Mobile app simulation
         {
             'quiet': True,
             'no_warnings': True,
-            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-            'referer': 'https://www.tiktok.com/',
+            'user_agent': 'com.zhiliaoapp.musically/2023.4.1 (Linux; U; Android 10; en_US; SM-G973F; Build/QP1A.190711.020; Cronet/58.0.2991.0)',
             'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'DNT': '1',
-                'Sec-Fetch-Mode': 'navigate',
+                'Accept': 'application/json',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'x-tt-token': '',
+                'x-ss-req-ticket': str(int(time.time() * 1000)),
             },
             'extractor_args': {
                 'tiktok': {
-                    'api_hostname': 'api.tiktokv.com'
+                    'api_hostname': 'api16-normal-c-useast1a.tiktokv.com',
+                    'app_version': '23.4.1',
+                    'manifest_app_version': '2023401'
                 }
             }
         },
-        # Strategy 2: Desktop Chrome
+        # Strategy 2: Alternative mobile browser
+        {
+            'quiet': True,
+            'no_warnings': True,
+            'user_agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+            'referer': 'https://www.tiktok.com/',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+            },
+            'socket_timeout': 30,
+            'retries': 3,
+        },
+        # Strategy 3: Desktop with bypass headers
         {
             'quiet': True,
             'no_warnings': True,
             'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'referer': 'https://www.tiktok.com/',
             'headers': {
                 'Accept': '*/*',
                 'Accept-Language': 'en-US,en;q=0.9',
-            }
+                'Origin': 'https://www.tiktok.com',
+                'Referer': 'https://www.tiktok.com/',
+            },
+            'socket_timeout': 60,
         },
-        # Strategy 3: Basic configuration
+        # Strategy 4: Minimal configuration
         {
             'quiet': True,
             'no_warnings': True,
+            'no_check_certificate': True,
+            'socket_timeout': 120,
         }
     ]
     
